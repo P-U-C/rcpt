@@ -1,6 +1,8 @@
-import type { Env, ReceiptRow, CommitBody, Receipt, ExecutionMetadata } from '../types';
+import type { Env, ReceiptRow, CommitBody, Receipt, ExecutionMetadata, ReceiptVisibility, EncryptionMethod } from '../types';
 import { rowToReceipt, generateReceiptId } from './receipt';
 import { storeOnWalrus } from './walrus';
+import { encryptForRecipient } from './encryption';
+import type { EncryptedPayload } from './encryption';
 
 const CACHE_TTL = 300;
 const WALRUS_AGGREGATOR = 'https://aggregator.walrus-testnet.walrus.space';
@@ -43,14 +45,19 @@ export async function createReceipt(env: Env, body: CommitBody): Promise<Receipt
     now
   );
 
+  const visibility: ReceiptVisibility = body.visibility ?? 'public';
+  const isPrivate = visibility === 'private';
+  const encryptionMethod: EncryptionMethod = isPrivate ? 'ecdh-aes256gcm' : null;
+
   await env.DB.prepare(`
     INSERT INTO receipts (
       receipt_id, capability,
       provider_agent_id, provider_address, provider_protocol, provider_endpoint,
       consumer_agent_id, consumer_address, consumer_protocol,
       spec_hash, payment_amount, payment_asset, payment_rail, payment_chain,
-      provider_signature, status, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'committed', ?)
+      provider_signature, status, created_at,
+      visibility, encryption_method, provider_pubkey, consumer_pubkey
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'committed', ?, ?, ?, ?, ?)
   `).bind(
     receipt_id, body.capability,
     body.provider.agent_id ?? null, body.provider.address, body.provider.protocol, body.provider.endpoint ?? null,
@@ -59,7 +66,9 @@ export async function createReceipt(env: Env, body: CommitBody): Promise<Receipt
     body.payment?.amount ?? null, body.payment?.asset ?? null,
     body.payment?.rail ?? null, body.payment?.chain ?? null,
     body.provider_signature ?? null,
-    now
+    now,
+    visibility, encryptionMethod,
+    body.provider_pubkey ?? null, body.consumer_pubkey ?? null
   ).run();
 
   // Build receipt object in memory — avoid immediate re-read lag
@@ -82,6 +91,14 @@ export async function createReceipt(env: Env, body: CommitBody): Promise<Receipt
     created_at: now,
     delivered_at: null,
     acknowledged_at: null,
+    visibility,
+    encryption_method: encryptionMethod,
+    provider_pubkey: body.provider_pubkey ?? null,
+    consumer_pubkey: body.consumer_pubkey ?? null,
+    encrypted_output_hash: null,
+    encrypted_execution_metadata: null,
+    seal_package_id: null,
+    seal_object_id: null,
   };
 
   const anchored = await anchorWalrus(env, receipt);
@@ -101,15 +118,43 @@ export async function updateDelivery(
 
   await env.KV.delete(`receipt:${receipt_id}`).catch(() => {});
 
+  const isPrivate = existing.visibility === 'private';
+  let storedOutputHash: string | null = output_hash;
+  let storedMetadata: string | null = execution_metadata ? JSON.stringify(execution_metadata) : null;
+  let encryptedOutputHash: string | null = null;
+  let encryptedMetadata: string | null = null;
+
+  // Encrypt sensitive fields when visibility = 'private'
+  if (isPrivate && existing.consumer_pubkey) {
+    try {
+      const encOut = await encryptForRecipient(output_hash, existing.consumer_pubkey);
+      encryptedOutputHash = JSON.stringify(encOut);
+      storedOutputHash = null; // don't store cleartext
+      if (execution_metadata) {
+        const encMeta = await encryptForRecipient(JSON.stringify(execution_metadata), existing.consumer_pubkey);
+        encryptedMetadata = JSON.stringify(encMeta);
+        storedMetadata = null;
+      }
+    } catch (err) {
+      // Fail open — store cleartext if encryption fails
+      // Log the error for debugging
+      console.error('[encryption] Failed to encrypt delivery payload:', err);
+    }
+  }
+
   await env.DB.prepare(`
     UPDATE receipts SET status = 'delivered', output_hash = ?,
       execution_metadata = ?,
+      encrypted_output_hash = ?,
+      encrypted_execution_metadata = ?,
       provider_signature = COALESCE(?, provider_signature),
       delivered_at = ?
     WHERE receipt_id = ?
   `).bind(
-    output_hash,
-    execution_metadata ? JSON.stringify(execution_metadata) : null,
+    storedOutputHash,
+    storedMetadata,
+    encryptedOutputHash,
+    encryptedMetadata,
     provider_signature, now, receipt_id
   ).run();
 
@@ -117,8 +162,10 @@ export async function updateDelivery(
   const receipt: Receipt = {
     ...existing,
     status: 'delivered',
-    output_hash,
-    execution_metadata: execution_metadata as ExecutionMetadata | null,
+    output_hash: storedOutputHash,
+    execution_metadata: storedMetadata ? execution_metadata as ExecutionMetadata | null : null,
+    encrypted_output_hash: encryptedOutputHash,
+    encrypted_execution_metadata: encryptedMetadata,
     provider_signature: provider_signature ?? existing.provider_signature,
     delivered_at: now,
   };

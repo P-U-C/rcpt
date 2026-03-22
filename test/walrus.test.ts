@@ -21,6 +21,14 @@ const DUMMY_RECEIPT: Receipt = {
   created_at: '2026-03-22T00:00:00.000Z',
   delivered_at: null,
   acknowledged_at: null,
+    visibility: "public" as const,
+    encryption_method: null,
+    provider_pubkey: null,
+    consumer_pubkey: null,
+    encrypted_output_hash: null,
+    encrypted_execution_metadata: null,
+    seal_package_id: null,
+    seal_object_id: null,
 };
 
 describe('storeOnWalrus', () => {

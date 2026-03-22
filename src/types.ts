@@ -7,6 +7,8 @@ export interface Env {
 export type ReceiptStatus = 'committed' | 'delivered' | 'acknowledged' | 'disputed';
 export type PaymentRail = 'mpp' | 'x402' | 'ap2' | 'direct' | 'other';
 export type AgentProtocol = 'a2a' | 'mcp' | 'acp' | 'http' | 'mpp' | 'custom';
+export type ReceiptVisibility = 'public' | 'private';
+export type EncryptionMethod = 'ecdh-aes256gcm' | 'seal' | null;
 
 export interface AgentIdentity {
   agent_id?: string | null;
@@ -37,6 +39,12 @@ export interface CommitBody {
   spec_hash?: string;
   payment?: PaymentDetails;
   provider_signature?: string;
+  /** Default: "public". Set "private" to encrypt output_hash + execution_metadata on Walrus. */
+  visibility?: ReceiptVisibility;
+  /** Required when visibility = "private". Uncompressed P-256 pubkey, hex-encoded. */
+  provider_pubkey?: string;
+  /** Required when visibility = "private". Uncompressed P-256 pubkey, hex-encoded. */
+  consumer_pubkey?: string;
 }
 
 export interface DeliverBody {
@@ -77,6 +85,21 @@ export interface ReceiptRow {
   created_at: string;
   delivered_at: string | null;
   acknowledged_at: string | null;
+  // Visibility fields (migration 0002)
+  visibility?: ReceiptVisibility;
+  encryption_method?: EncryptionMethod;
+  provider_pubkey?: string | null;
+  consumer_pubkey?: string | null;
+  encrypted_output_hash?: string | null;
+  encrypted_execution_metadata?: string | null;
+  seal_package_id?: string | null;
+  seal_object_id?: string | null;
+}
+
+export interface EncryptionHint {
+  method: 'ecdh-aes256gcm';
+  ephemeral_pubkey: string;
+  iv: string;
 }
 
 export interface Receipt {
@@ -98,6 +121,26 @@ export interface Receipt {
   created_at: string;
   delivered_at: string | null;
   acknowledged_at: string | null;
+  /** Visibility: "public" (default) or "private" */
+  visibility: ReceiptVisibility;
+  /** Non-null when visibility = "private" */
+  encryption_method: EncryptionMethod;
+  /** Pubkeys used for encryption (cleartext — agents need these to decrypt) */
+  provider_pubkey: string | null;
+  consumer_pubkey: string | null;
+  /**
+   * When private: output_hash and execution_metadata are encrypted.
+   * Cleartext fields are null; encrypted fields carry ciphertext JSON.
+   * Decrypt client-side using ECDH shared secret (see encryption.ts).
+   *
+   * ⚠️ MAINNET NOTE: Sui Seal replaces ECDH when Seal launches on mainnet.
+   * Track: https://github.com/MystenLabs/seal
+   */
+  encrypted_output_hash: string | null;
+  encrypted_execution_metadata: string | null;
+  /** Seal mainnet fields — null until Seal mainnet launches */
+  seal_package_id: string | null;
+  seal_object_id: string | null;
 }
 
 export interface VerifyResult {

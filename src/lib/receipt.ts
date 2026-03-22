@@ -1,4 +1,4 @@
-import type { ReceiptRow, Receipt, ExecutionMetadata, PaymentDetails, AgentProtocol, PaymentRail } from '../types';
+import type { ReceiptRow, Receipt, ExecutionMetadata, PaymentDetails, AgentProtocol, PaymentRail, ReceiptVisibility, EncryptionMethod } from '../types';
 
 export function generateReceiptId(
   providerAddress: string,
@@ -82,6 +82,14 @@ export function rowToReceipt(row: ReceiptRow): Receipt {
     created_at: row.created_at,
     delivered_at: row.delivered_at,
     acknowledged_at: row.acknowledged_at,
+    visibility: (row.visibility ?? 'public') as ReceiptVisibility,
+    encryption_method: (row.encryption_method ?? null) as EncryptionMethod,
+    provider_pubkey: row.provider_pubkey ?? null,
+    consumer_pubkey: row.consumer_pubkey ?? null,
+    encrypted_output_hash: row.encrypted_output_hash ?? null,
+    encrypted_execution_metadata: row.encrypted_execution_metadata ?? null,
+    seal_package_id: row.seal_package_id ?? null,
+    seal_object_id: row.seal_object_id ?? null,
   };
 }
 

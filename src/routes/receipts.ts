@@ -18,6 +18,9 @@ receiptsRouter.post('/commit', async (c) => {
     spec_hash?: string;
     provider_signature?: string;
     payment?: Record<string, unknown>;
+    visibility?: string;
+    provider_pubkey?: string;
+    consumer_pubkey?: string;
   };
 
   if (!raw.capability || typeof raw.capability !== 'string')
@@ -68,6 +71,9 @@ receiptsRouter.post('/commit', async (c) => {
     consumer,
     spec_hash: raw.spec_hash,
     provider_signature: raw.provider_signature,
+    visibility: (raw.visibility as import('../types').ReceiptVisibility) ?? 'public',
+    provider_pubkey: raw.provider_pubkey as string ?? undefined,
+    consumer_pubkey: raw.consumer_pubkey as string ?? undefined,
   };
   if (raw.payment?.amount !== undefined) {
     commitBody.payment = {
