@@ -11,7 +11,7 @@ const app = new Hono<{ Bindings: Env }>();
 app.use('*', cors);
 app.use('*', requestId);
 app.use('/v1/*', ratelimit);
-app.get('/v1/health', (c) => c.json({ status: 'ok', version: '0.1.0', service: 'receipt-layer' }));
+app.get('/v1/health', (c) => c.json({ status: 'ok', version: '0.1.0', service: 'rcpt/' }));
 app.route('/v1/receipt', receiptsRouter);
 app.route('/v1/verify', verifyRouter);
 app.route('/v1/agent', agentsRouter);

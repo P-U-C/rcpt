@@ -1,4 +1,4 @@
-name = "receipt-layer"
+name = "rcpt"
 main = "src/index.ts"
 compatibility_date = "2024-03-01"
 

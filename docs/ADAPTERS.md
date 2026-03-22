@@ -52,7 +52,7 @@ import { MPP } from 'mpp-client';
 import { ReceiptLayer } from 'receipt-layer-client';
 
 const mpp = new MPP();
-const receipts = new ReceiptLayer('https://receipt-layer.p-u-c.workers.dev');
+const receipts = new ReceiptLayer('https://rcpt.p-u-c.workers.dev');
 
 mpp.on('payment', async (payment) => {
   const receipt = await receipts.commit({
@@ -94,7 +94,7 @@ import express from 'express';
 import { ReceiptLayer } from 'receipt-layer-client';
 
 const app = express();
-const receipts = new ReceiptLayer('https://receipt-layer.p-u-c.workers.dev');
+const receipts = new ReceiptLayer('https://rcpt.p-u-c.workers.dev');
 
 app.get('/api/resource', async (req, res) => {
   // x402 handshake

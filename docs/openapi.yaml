@@ -1,13 +1,13 @@
 openapi: 3.0.0
 info:
-  title: Agent Receipt Layer API
+  title: rcpt/ — Agent Receipt Layer API
   version: 0.1.0
   description: Verifiable service receipts for the agent economy
   contact:
     name: P-U-C
-    url: https://github.com/P-U-C/receipt-layer
+    url: https://github.com/P-U-C/rcpt
 servers:
-  - url: https://receipt-layer.p-u-c.workers.dev
+  - url: https://rcpt.p-u-c.workers.dev
     description: Production
 
 paths:

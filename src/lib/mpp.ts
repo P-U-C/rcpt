@@ -25,7 +25,7 @@ export const PRICE_USDC = '0.001';
 export const PRICE_WEI = '1000'; // 0.001 USDC in 6-decimal
 
 const PAYMENT_ADDRESS = '0xB1e55EdD3176Ce9C9aF28F15b79e0c0eb8Fe51AA';
-const SERVICE_URL = 'https://receipt-layer.p-u-c.workers.dev/v1/receipt/commit';
+const SERVICE_URL = 'https://rcpt.p-u-c.workers.dev/v1/receipt/commit';
 
 const SUPPORTED_CHAINS = [
   { name: 'base',  chainId: 8453, rpc: 'https://base-rpc.publicnode.com', network: 'base' },
@@ -75,7 +75,7 @@ export function buildPaymentRequest(capability: string): object {
       asset: 'USDC',
       outputSchema: null,
       extra: {
-        name: 'Agent Receipt Layer',
+        name: 'rcpt/ — Agent Receipt Layer',
         version: '0.1.0',
         capability,
       },
@@ -133,7 +133,7 @@ async function verifyOnChain(txHash: string, expectedTo: string, rpc: string): P
   try {
     const resp = await fetch(rpc, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'receipt-layer/0.1' },
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'rcpt/0.1' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getTransactionReceipt', params: [txHash] }),
       signal: AbortSignal.timeout(3000),
     });

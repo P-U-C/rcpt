@@ -1,10 +1,10 @@
-# Agent Receipt Layer
+# rcpt/
 
 **The accountability primitive the agent economy is missing.**
 
-[![Deploy](https://img.shields.io/badge/deployed-live-brightgreen)](https://receipt-layer.p-u-c.workers.dev)
+[![Deploy](https://img.shields.io/badge/deployed-live-brightgreen)](https://rcpt.p-u-c.workers.dev)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-47%20passing-brightgreen)]()
 [![Version](https://img.shields.io/badge/version-0.1.0-blue)]()
 
 Agents can pay each other. They cannot prove to each other that a service was delivered as promised.
@@ -15,7 +15,7 @@ Agents can pay each other. They cannot prove to each other that a service was de
 
 ## The Problem
 
-Agent A pays Agent B 0.01 USDC for sentiment analysis on 500 tweets.
+Agent A pays Agent B 0.001 USDC for sentiment analysis on 500 tweets.
 
 Agent B could:
 - Return cached results from yesterday
@@ -32,9 +32,9 @@ Agent A has no recourse. The payment is final. The trust is blind.
 Three states. One lifecycle. Binary consensus.
 
 ```
-Provider                    Receipt Layer                Consumer
+Provider                        rcpt/                    Consumer
    │                              │                          │
-   │── POST /commit ─────────────>│ receipt_id created       │
+   │── POST /v1/receipt/commit ──>│ rcpt_0x4b83e78b created  │
    │                              │ stored in D1             │
    │                              │ anchored on Walrus       │
    │                              │                          │
@@ -50,9 +50,9 @@ Provider                    Receipt Layer                Consumer
    │                              │                          │
 ```
 
-**Committed** — provider has committed to delivery  
-**Delivered** — provider has recorded output hash + execution metadata  
-**Acknowledged** — consumer has counter-signed; receipt is fulfilled
+**committed** — provider has committed to delivery  
+**delivered** — provider has recorded output hash + execution metadata  
+**acknowledged** — consumer has counter-signed; receipt is complete
 
 Unacknowledged receipts are not failures — they are data. An agent with 10,000 acknowledged receipts and zero unacknowledged is more trustworthy than one with no history.
 
@@ -70,20 +70,20 @@ Unacknowledged receipts are not failures — they are data. An agent with 10,000
 
 ### Commit (provider registers intent)
 ```bash
-curl -X POST https://receipt-layer.p-u-c.workers.dev/v1/receipt/commit \
+curl -X POST https://rcpt.p-u-c.workers.dev/v1/receipt/commit \
   -H "Content-Type: application/json" \
   -d '{
     "capability": "sentiment-analysis",
     "provider": { "address": "0xPROVIDER", "protocol": "mpp" },
     "consumer": { "address": "0xCONSUMER", "protocol": "http" },
-    "payment": { "amount": "10000", "asset": "USDC", "rail": "mpp", "chain": 8453 },
+    "payment": { "amount": "1000", "asset": "USDC", "rail": "mpp", "chain": 8453 },
     "provider_signature": "0x..."
   }'
 ```
 
 ### Deliver (provider records output)
 ```bash
-curl -X POST https://receipt-layer.p-u-c.workers.dev/v1/receipt/RECEIPT_ID/deliver \
+curl -X POST https://rcpt.p-u-c.workers.dev/v1/receipt/RECEIPT_ID/deliver \
   -H "Content-Type: application/json" \
   -d '{
     "output_hash": "0xSHA256_OF_OUTPUT",
@@ -94,30 +94,66 @@ curl -X POST https://receipt-layer.p-u-c.workers.dev/v1/receipt/RECEIPT_ID/deliv
 
 ### Acknowledge (consumer counter-signs)
 ```bash
-curl -X POST https://receipt-layer.p-u-c.workers.dev/v1/receipt/RECEIPT_ID/ack \
+curl -X POST https://rcpt.p-u-c.workers.dev/v1/receipt/RECEIPT_ID/ack \
   -H "Content-Type: application/json" \
   -d '{ "consumer_signature": "0x..." }'
 ```
 
 ### Verify (permissionless)
 ```bash
-curl https://receipt-layer.p-u-c.workers.dev/v1/verify/RECEIPT_ID
+curl https://rcpt.p-u-c.workers.dev/v1/verify/RECEIPT_ID
 # Returns: walrus_verified, walrus_url, provider_verified, consumer_verified
 ```
 
 ---
 
-## TypeScript SDK (10 lines)
+## Private Receipts
+
+Commercial transactions stay confidential. Add `visibility: "private"` with pubkeys on commit:
+
+```bash
+curl -X POST https://rcpt.p-u-c.workers.dev/v1/receipt/commit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "capability": "proprietary-model-inference",
+    "visibility": "private",
+    "provider_pubkey": "04abc...",
+    "consumer_pubkey": "04def...",
+    "provider": { "address": "0xPROVIDER", "protocol": "mpp" },
+    "consumer": { "address": "0xCONSUMER", "protocol": "http" }
+  }'
+```
+
+On deliver: `output_hash` and `execution_metadata` are encrypted with the consumer's public key using **ECDH + AES-256-GCM** (Web Crypto, zero deps). The Walrus blob stores ciphertext — unreadable without the consumer's private key.
+
+**Mainnet upgrade path:** Sui Seal replaces ECDH when Seal launches on mainnet. Same API — swap `encryption_method` and decrypt client-side with `@mysten/seal`. No migration needed.
+
+> ⚠️ Sui Seal is testnet-only as of March 2026. Track: https://github.com/MystenLabs/seal
+
+---
+
+## Payment Gate (MPP x402)
+
+```
+Free tier: 100 commits/day per IP
+Paid:      0.001 USDC per commit (Base or Tempo mainnet)
+```
+
+Free requests return `x-free-commits-remaining` header. When exhausted, `/commit` returns a `402` with a full x402 payment-request body — agents pay and retry.
+
+---
+
+## TypeScript (15 lines)
 
 ```typescript
-const BASE = 'https://receipt-layer.p-u-c.workers.dev';
+const BASE = 'https://rcpt.p-u-c.workers.dev';
 
-const commit = await fetch(`${BASE}/v1/receipt/commit`, {
+const { receipt_id } = await fetch(`${BASE}/v1/receipt/commit`, {
   method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ capability, provider, consumer, payment })
 }).then(r => r.json());
 
-await fetch(`${BASE}/v1/receipt/${commit.receipt_id}/deliver`, {
+await fetch(`${BASE}/v1/receipt/${receipt_id}/deliver`, {
   method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ output_hash, execution_metadata })
 });
@@ -133,16 +169,17 @@ await fetch(`${BASE}/v1/receipt/${receipt_id}/ack`, {
 
 ## Comparison
 
-| | Agent Receipt Layer | ERC-8183 | Nothing |
+| | rcpt/ | ERC-8183 | Nothing |
 |---|---|---|---|
 | Escrow | ❌ No | ✅ Yes | — |
 | Third-party evaluators | ❌ No | ✅ Yes | — |
 | Binary consensus | ✅ Yes | ❌ No | — |
 | Decentralized storage | ✅ Walrus | ❌ No | — |
+| Private receipts | ✅ ECDH | ❌ No | — |
 | Protocol-agnostic | ✅ Yes | ❌ EVM only | — |
 | Production-deployed | ✅ Yes | ❌ Spec only | — |
 
-ERC-8183 is an escrow system. This is a receipt layer. They're composable — ERC-8183 can use our receipts as settlement triggers.
+ERC-8183 is an escrow system. rcpt/ is a receipt layer. They're composable — ERC-8183 can use our receipts as settlement triggers.
 
 ---
 
@@ -160,10 +197,10 @@ ERC-8183 is an escrow system. This is a receipt layer. They're composable — ER
 
 ## Permissionless Verification
 
-1. GET `/v1/verify/:receipt_id` — returns `walrus_url`
-2. Fetch raw receipt from Walrus directly using `walrus_url`
-3. Verify signatures against provider/consumer on-chain identities
-4. No dependency on our API
+1. `GET /v1/verify/:receipt_id` — returns `walrus_url`
+2. Fetch raw receipt from Walrus directly
+3. Verify signatures against provider/consumer addresses
+4. No dependency on rcpt/ API
 
 ---
 
@@ -172,38 +209,46 @@ ERC-8183 is an escrow system. This is a receipt layer. They're composable — ER
 | Method | Path | Description |
 |---|---|---|
 | POST | /v1/receipt/commit | Create a receipt commitment |
-| POST | /v1/receipt/:id/deliver | Record delivery |
+| POST | /v1/receipt/:id/deliver | Record delivery + output hash |
 | POST | /v1/receipt/:id/ack | Consumer acknowledgment |
 | GET | /v1/receipt/:id | Get receipt |
-| GET | /v1/verify/:id | Verify receipt (with Walrus URL) |
+| GET | /v1/verify/:id | Verify (with Walrus URL) |
 | GET | /v1/agent/:address/receipts | All receipts for an address |
 | GET | /v1/health | Health check |
 
-Full OpenAPI spec: [docs/openapi.yaml](docs/openapi.yaml)
+Full spec: [docs/openapi.yaml](docs/openapi.yaml)
 
 ---
 
-## Ecosystem
+## The Agent Economy Stack
 
-- **[safetymd](https://safetymd.p-u-c.workers.dev)** — Trust layer: verify payment addresses before committing
-- **[ERC-8004](https://github.com/P-U-C/b1e55ed)** — Identity layer: on-chain agent registration
-- **MPP** — Payment layer: x402 machine payments
+```
+┌─────────────────────────────────────────┐
+│  rcpt/          accountability layer    │
+├─────────────────────────────────────────┤
+│  safetymd       trust layer             │
+├─────────────────────────────────────────┤
+│  ERC-8004       identity layer          │
+├─────────────────────────────────────────┤
+│  MPP / x402     payment layer           │
+└─────────────────────────────────────────┘
+```
 
 ---
 
 ## Roadmap
 
-| Phase | Storage | Anchoring |
-|---|---|---|
-| MVP (now) | Cloudflare D1 | Pending |
-| v0.2 | Walrus testnet | Base mainnet |
-| v1.0 | Walrus mainnet | Sui + Base |
+| Phase | Storage | Encryption | Anchoring |
+|---|---|---|---|
+| v0.1 (now) | Cloudflare D1 | ECDH + AES-256-GCM | Walrus testnet |
+| v0.2 | Walrus mainnet | Sui Seal | Base mainnet |
+| v1.0 | Walrus mainnet | Sui Seal | Sui + Base |
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome. Issues open.
+See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome.
 
 ---
 
