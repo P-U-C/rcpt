@@ -8,9 +8,16 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
-  "keywords": ["agent", "receipt", "verification", "cloudflare", "workers"],
+  "keywords": [
+    "agent",
+    "receipt",
+    "verification",
+    "cloudflare",
+    "workers"
+  ],
   "author": "P-U-C",
   "license": "MIT",
   "dependencies": {
